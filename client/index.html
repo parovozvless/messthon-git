@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>messthon-git</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="loginView" class="login-view">
+  <div class="login-card">
+    <div class="brand">messthon-git</div>
+    <h1>Sign in</h1>
+    <p class="muted">Use your GitHub username. The account is bound to this browser.</p>
+    <label for="loginInput">GitHub username</label>
+    <input id="loginInput" autocomplete="username" spellcheck="false" placeholder="octocat">
+    <button id="loginBtn" class="btn primary wide">Continue</button>
+    <div id="loginError" class="error"></div>
+    <div class="fineprint">Private storage. Files up to 1 GB. No email, no password.</div>
+  </div>
+</div>
+
+<div id="appView" class="app" hidden>
+  <header class="topbar">
+    <div class="brand">messthon-git</div>
+    <div class="top-right">
+      <span id="meLabel" class="me"></span>
+      <button id="logoutBtn" class="btn">Sign out</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-head">
+        <span>Chats</span>
+        <button id="newDmBtn" class="btn small">New</button>
+      </div>
+      <div id="convList" class="conv-list"></div>
+    </aside>
+
+    <main class="main">
+      <div class="main-head">
+        <div class="conv-title" id="convTitle">general</div>
+        <div class="online" id="onlineLabel"></div>
+      </div>
+
+      <div id="messages" class="messages"></div>
+
+      <div id="uploadBar" class="upload-bar" hidden>
+        <div class="upload-text" id="uploadText"></div>
+        <div class="progress"><div id="uploadFill"></div></div>
+      </div>
+
+      <div class="composer">
+        <label class="attach">
+          Attach
+          <input type="file" id="fileInput" hidden>
+        </label>
+        <textarea id="messageInput" rows="1" placeholder="Message"></textarea>
+        <button id="sendBtn" class="btn primary">Send</button>
+      </div>
+    </main>
+  </div>
+</div>
+
+<div id="dmModal" class="modal" hidden>
+  <div class="modal-card">
+    <h2>New message</h2>
+    <label for="dmInput">GitHub username</label>
+    <input id="dmInput" spellcheck="false" placeholder="octocat">
+    <div id="dmError" class="error"></div>
+    <div class="modal-actions">
+      <button id="dmCancel" class="btn">Cancel</button>
+      <button id="dmStart" class="btn primary">Start chat</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
