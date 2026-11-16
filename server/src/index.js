@@ -85,7 +85,7 @@ app.get("/api/auth/github", (req, res) => {
   res.cookie("oauth_state", state, { httpOnly: true, sameSite: "lax", maxAge: 600000 });
   const params = new URLSearchParams({
     client_id: config.githubClientId,
-    redirect_uri: `${config.clientOrigin.replace(/\*$/, '')}/auth/callback`,
+    redirect_uri: "https://messthon-git.onrender.com/api/auth/callback",
     scope: "read:user",
     state,
     allow_signup: "false",
