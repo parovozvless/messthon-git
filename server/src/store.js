@@ -21,11 +21,16 @@ export class Registry {
       names.map((n) => this.repo.getJson(`${n}.json`).catch(() => null))
     );
     const [a, c, f, s] = loaded;
-    if (a?.data) this.accounts = a.data;
-    if (c?.data) this.convs = c.data;
-    if (f?.data) this.files = f.data;
-    if (s?.data) this.shards = s.data;
-    for (const [i, n] of names.entries()) if (loaded[i]) this.sha[n] = loaded[i].sha;
+    this.accounts = a?.data || { users: {} };
+    this.convs = c?.data || { convs: {} };
+    this.files = f?.data || { files: {} };
+    this.shards = s?.data || { current: 1, list: [1], bytes: {} };
+    for (const [i, n] of names.entries()) {
+      const loadedItem = (await Promise.all(
+        names.map((n) => this.repo.getJson(`${n}.json`).catch(() => null))
+      ))[i];
+      if (loadedItem) this.sha[n] = loadedItem.sha;
+    }
 
     if (!this.convs.convs[GENERAL_ID]) {
       this.convs.convs[GENERAL_ID] = {
@@ -38,6 +43,9 @@ export class Registry {
       };
       await this.save("convs");
     }
+    
+    // Ensure bytes object exists
+    if (!this.shards.bytes) this.shards.bytes = {};
   }
 
   save(name) {
@@ -150,13 +158,19 @@ export class Shards {
     if (this.growing) return;
     this.growing = true;
     try {
-      const apiSize = await this.repoCurrent().sizeKb();
-      const localSize = Math.ceil((this.bytes[this.current()] || 0) / 1024);
+      const currentShard = this.current();
+      const apiSize = await this.repoCurrent().sizeKb().catch(() => 0);
+      const localSize = Math.ceil((this.bytes[currentShard] || 0) / 1024);
       const size = Math.max(apiSize, localSize);
       if (size <= this.thresholdKb) return;
       const next = Math.max(...this.registry.shards.list) + 1;
-      console.log(`[shards] repo ${this.name(this.current())} is ${size}KB > ${this.thresholdKb}KB, creating ${this.name(next)}`);
-      await createRepo(this.token, this.owner, this.name(next), true);
+      console.log(`[shards] repo ${this.name(currentShard)} is ${size}KB > ${this.thresholdKb}KB, creating ${this.name(next)}`);
+      const created = await createRepo(this.token, this.owner, this.name(next), true);
+      if (created === "exists") {
+        console.log(`[shards] ${this.name(next)} already exists`);
+      } else if (created !== true) {
+        throw new Error(`Failed to create repo: ${created}`);
+      }
       this.registry.shards.list.push(next);
       this.registry.shards.current = next;
       this.registry.shards.bytes = this.bytes;
@@ -229,12 +243,26 @@ export class Messages {
     entry.dirty = false;
     const content = entry.messages.map((m) => JSON.stringify(m)).join("\n") + (entry.messages.length ? "\n" : "");
     try {
-      const res = await this.shards.repo(entry.shard).putFile(`msgs/${convId}.jsonl`, content, `msgs: ${convId} (${entry.messages.length})`, entry.sha);
+      const repo = this.shards.repo(entry.shard);
+      const res = await repo.putFile(`msgs/${convId}.jsonl`, content, `msgs: ${convId} (${entry.messages.length})`, entry.sha);
       entry.sha = res.sha;
       this.shards.addBytes(Buffer.byteLength(content), entry.shard);
     } catch (err) {
       entry.dirty = true;
-      throw err;
+      // If shard repo doesn't exist, try to grow and retry once
+      if (err.status === 404) {
+        await this.shards.maybeGrow();
+        try {
+          const repo = this.shards.repo(entry.shard);
+          const res = await repo.putFile(`msgs/${convId}.jsonl`, content, `msgs: ${convId} (${entry.messages.length})`, entry.sha);
+          entry.sha = res.sha;
+          this.shards.addBytes(Buffer.byteLength(content), entry.shard);
+        } catch (retryErr) {
+          throw retryErr;
+        }
+      } else {
+        throw err;
+      }
     }
     this.shards.maybeGrow();
   }
@@ -311,15 +339,20 @@ export class Files {
     }));
     let committed = false;
     for (let attempt = 0; attempt < 5 && !committed; attempt++) {
-      const head = await repo.getHead();
-      const commit = await repo.getCommit(head);
-      const tree = await repo.createTree(commit.tree.sha, entries);
-      const newCommit = await repo.createCommit(`file: ${up.name} (${up.size}B)`, tree, [head]);
       try {
+        const head = await repo.getHead();
+        const commit = await repo.getCommit(head);
+        const tree = await repo.createTree(commit.tree.sha, entries);
+        const newCommit = await repo.createCommit(`file: ${up.name} (${up.size}B)`, tree, [head]);
         await repo.updateHead(newCommit);
         committed = true;
       } catch (err) {
-        if (err.status !== 422 && err.status !== 409) throw err;
+        if (err.status === 404) {
+          // Repo might not exist yet, try to create it
+          await this.shards.maybeGrow();
+        } else if (err.status !== 422 && err.status !== 409) {
+          throw err;
+        }
         await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
       }
     }

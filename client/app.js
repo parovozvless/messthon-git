@@ -14,6 +14,8 @@ const state = {
   ws: null,
   retry: 1000,
   reconnectTimer: null,
+  reconnectAttempts: 0,
+  connecting: false,
   typingSent: 0,
   pendingFile: null,
   uploading: false,
@@ -335,23 +337,28 @@ async function downloadFile(id, button) {
 
 /* ---------- websocket ---------- */
 function connect() {
-  if (!state.token) return;
+  if (!state.token || state.connecting) return;
   if (state.ws) {
     try { state.ws.close(); } catch {}
   }
+  state.connecting = true;
   const url = `${WS_URL}?token=${encodeURIComponent(state.token)}`;
   let ws;
   try {
     ws = new WebSocket(url);
   } catch {
+    state.connecting = false;
     scheduleReconnect();
     return;
   }
   state.ws = ws;
 
   ws.onopen = () => {
+    state.connecting = false;
     state.retry = 1000;
+    state.reconnectAttempts = 0;
     clearTimeout(state.reconnectTimer);
+    updateConnectionStatus(true);
   };
 
   ws.onmessage = (event) => {
@@ -385,6 +392,7 @@ function connect() {
   };
 
   ws.onclose = () => {
+    state.connecting = false;
     if (!state.token) return;
     scheduleReconnect();
   };
@@ -392,18 +400,38 @@ function connect() {
 }
 
 function scheduleReconnect() {
-  if (state.reconnectTimer) return;
-  const delay = Math.min(1000 * 2 ** Math.min(state.retry, 5), 30000);
-  state.retry += 1;
+  if (state.reconnectTimer || state.connecting) return;
+  const delay = Math.min(1000 * 2 ** Math.min((state.reconnectAttempts || 0), 5), 30000);
+  state.reconnectAttempts = (state.reconnectAttempts || 0) + 1;
   state.reconnectTimer = setTimeout(() => {
     state.reconnectTimer = null;
     connect();
   }, delay);
+  updateConnectionStatus(false);
+}
+
+
+function updateConnectionStatus(connected) {
+  const indicator = document.getElementById('connectionIndicator');
+  if (indicator) {
+    indicator.textContent = connected ? '🟢' : '🔴';
+    indicator.title = connected ? 'Connected' : 'Disconnected - reconnecting...';
+  }
+}
+
+function updateConnectionStatus(connected) {
+  const indicator = document.getElementById('connectionIndicator');
+  if (indicator) {
+    indicator.textContent = connected ? '🟢' : '🔴';
+    indicator.title = connected ? 'Connected' : 'Disconnected - reconnecting...';
+  }
 }
 
 function renderOnline() {
   const n = state.online.length;
   onlineLabel.textContent = n ? `${n} online` : "";
+  updateConnectionStatus(true);
+  updateConnectionStatus(true);
 }
 
 /* ---------- events ---------- */
