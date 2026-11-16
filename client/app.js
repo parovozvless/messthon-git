@@ -3,6 +3,7 @@
 const API = new URLSearchParams(location.search).get("api") || "https://messthon-git.onrender.com";
 const WS_URL = API.replace(/^http/, "ws") + "/ws";
 
+let typingTimer = null;
 const state = {
   token: localStorage.getItem("messthon.token") || "",
   login: localStorage.getItem("messthon.login") || "",
@@ -382,8 +383,8 @@ function connect() {
     }
     if (packet.type === "typing" && packet.conversationId === state.current) {
       onlineLabel.textContent = `${packet.login} is typing...`;
-      clearTimeout(connect._typingTimer);
-      connect._typingTimer = setTimeout(renderOnline, 2500);
+      clearTimeout(typingTimer);
+      typingTimer = setTimeout(renderOnline, 2500);
       return;
     }
     if (packet.type === "error") {
@@ -419,18 +420,9 @@ function updateConnectionStatus(connected) {
   }
 }
 
-function updateConnectionStatus(connected) {
-  const indicator = document.getElementById('connectionIndicator');
-  if (indicator) {
-    indicator.textContent = connected ? '🟢' : '🔴';
-    indicator.title = connected ? 'Connected' : 'Disconnected - reconnecting...';
-  }
-}
-
 function renderOnline() {
   const n = state.online.length;
   onlineLabel.textContent = n ? `${n} online` : "";
-  updateConnectionStatus(true);
   updateConnectionStatus(true);
 }
 
