@@ -435,6 +435,13 @@ function renderOnline() {
 }
 
 /* ---------- events ---------- */
+const githubLoginBtn = document.getElementById("githubLoginBtn");
+if (githubLoginBtn) {
+  githubLoginBtn.addEventListener("click", () => {
+    window.location.href = `${API}/api/auth/github`;
+  });
+}
+
 loginBtn.addEventListener("click", doLogin);
 loginInput.addEventListener("keydown", (e) => { if (e.key === "Enter") doLogin(); });
 logoutBtn.addEventListener("click", logout);
@@ -491,6 +498,25 @@ dmInput.addEventListener("keydown", (e) => { if (e.key === "Enter") dmStart.clic
 
 /* ---------- boot ---------- */
 (function boot() {
+  // Handle OAuth callback
+  const urlParams = new URLSearchParams(window.location.search);
+  const token = urlParams.get("token");
+  const error = urlParams.get("error");
+  if (token) {
+    localStorage.setItem("messthon.token", token);
+    // Decode JWT to get login
+    try {
+      const payload = JSON.parse(atob(token.split(".")[1]));
+      state.login = payload.login;
+      localStorage.setItem("messthon.login", payload.login);
+    } catch {}
+    // Clean URL
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
+  if (error) {
+    loginError.textContent = "GitHub sign in failed: " + error;
+  }
+
   if (!state.secret) {
     state.secret = randomSecret();
     localStorage.setItem("messthon.secret", state.secret);
@@ -502,6 +528,5 @@ dmInput.addEventListener("keydown", (e) => { if (e.key === "Enter") dmStart.clic
       .catch(() => logout());
   } else {
     loginView.hidden = false;
-    loginInput.focus();
   }
 })();

@@ -3,6 +3,8 @@ export const config = {
   clientOrigin: process.env.CLIENT_ORIGIN || "*",
   jwtSecret: process.env.JWT_SECRET || "",
   githubToken: process.env.GITHUB_TOKEN || "",
+  githubClientId: process.env.GITHUB_CLIENT_ID || "",
+  githubClientSecret: process.env.GITHUB_CLIENT_SECRET || "",
   owner: process.env.GITHUB_OWNER || "",
   registryRepo: process.env.REGISTRY_REPO || "messthon-data-1",
   shardPrefix: process.env.SHARD_PREFIX || "messthon-data-",
@@ -17,5 +19,7 @@ export function assertConfig() {
   if (!config.githubToken) missing.push("GITHUB_TOKEN");
   if (!config.jwtSecret || config.jwtSecret.length < 32) missing.push("JWT_SECRET (32+ chars)");
   if (!config.owner) missing.push("GITHUB_OWNER");
+  if (!config.githubClientId) missing.push("GITHUB_CLIENT_ID");
+  if (!config.githubClientSecret) missing.push("GITHUB_CLIENT_SECRET");
   if (missing.length) throw new Error("Missing env: " + missing.join(", "));
 }

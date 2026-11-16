@@ -4,6 +4,7 @@ import express from "express";
 import cors from "cors";
 import { WebSocketServer } from "ws";
 import { config, assertConfig } from "./config.js";
+import cookieParser from "cookie-parser";
 import { GitHubRepo, githubUserExists } from "./github.js";
 import { Registry, Shards, Messages, Files } from "./store.js";
 import { signToken, verifyToken, hashSecret, validLogin, validSecret } from "./auth.js";
@@ -22,6 +23,7 @@ const app = express();
 app.set("trust proxy", 1);
 const origins = config.clientOrigin === "*" ? true : config.clientOrigin.split(",").map((s) => s.trim()).filter(Boolean);
 app.use(cors({ origin: origins, methods: ["GET", "POST", "PUT", "OPTIONS"], allowedHeaders: ["Content-Type", "Authorization"] }));
+app.use(cookieParser());
 app.use(express.json({ limit: "256kb" }));
 
 const sockets = new Map();
@@ -77,6 +79,84 @@ app.get("/health", (req, res) => {
   res.json({ ok: true, uptime: Math.round(process.uptime()), online: online().length, shards: registry.shards });
 });
 
+// OAuth: initiate GitHub OAuth flow
+app.get("/api/auth/github", (req, res) => {
+  const state = crypto.randomBytes(16).toString("hex");
+  res.cookie("oauth_state", state, { httpOnly: true, sameSite: "lax", maxAge: 600000 });
+  const params = new URLSearchParams({
+    client_id: config.githubClientId,
+    redirect_uri: `${config.clientOrigin.replace(/\*$/, '')}/auth/callback`,
+    scope: "read:user",
+    state,
+    allow_signup: "false",
+  });
+  res.redirect(`https://github.com/login/oauth/authorize?${params}`);
+});
+
+// OAuth: handle GitHub callback
+app.get("/api/auth/callback", async (req, res, next) => {
+  try {
+    const { code, state } = req.query;
+    const storedState = req.cookies?.oauth_state;
+    if (!storedState || state !== storedState) {
+      return res.redirect(`${config.clientOrigin}/?error=invalid_state`);
+    }
+    res.clearCookie("oauth_state");
+
+    // Exchange code for access token
+    const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        client_id: config.githubClientId,
+        client_secret: config.githubClientSecret,
+        code,
+      }),
+    });
+    const tokenData = await tokenRes.json();
+    if (!tokenData.access_token) {
+      return res.redirect(`${config.clientOrigin}/?error=token_exchange_failed`);
+    }
+
+    // Fetch GitHub user
+    const userRes = await fetch("https://api.github.com/user", {
+      headers: {
+        Authorization: `Bearer ${tokenData.access_token}`,
+        Accept: "application/vnd.github+json",
+        "User-Agent": "messthon-git",
+      },
+    });
+    if (!userRes.ok) {
+      return res.redirect(`${config.clientOrigin}/?error=user_fetch_failed`);
+    }
+    const ghUser = await userRes.json();
+    const github = ghUser.login;
+
+    // Check/create user
+    let user = registry.getUser(github);
+    if (!user) {
+      const exists = await githubUserExists(config.githubToken, github);
+      if (!exists) {
+        return res.redirect(`${config.clientOrigin}/?error=user_not_found`);
+      }
+      // For OAuth, we don't need deviceSecret - generate one
+      const deviceSecret = crypto.randomBytes(32).toString("hex");
+      user = await registry.createUser(github, hashSecret(github, deviceSecret));
+    }
+    registry.touchUser(user.login);
+
+    // Create JWT and redirect with token
+    const token = signToken({ login: user.login }, config.jwtSecret);
+    res.redirect(`${config.clientOrigin}/?token=${encodeURIComponent(token)}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Legacy auth endpoint (device secret) - kept for backward compatibility
 app.post("/api/auth", async (req, res, next) => {
   try {
     const { github, deviceSecret } = req.body || {};
