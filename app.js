@@ -1,6 +1,6 @@
 "use strict";
 
-const API = new URLSearchParams(location.search).get("api") || "https://messthon-git.onrender.com";
+const API = (new URLSearchParams(location.search).get("api") || "https://messthon-git.onrender.com").replace(/\/$/, "");
 const WS_URL = API.replace(/^http/, "ws") + "/ws";
 
 let typingTimer = null;
